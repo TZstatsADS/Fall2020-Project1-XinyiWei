@@ -1,0 +1,218 @@
+---
+title: "Project 1"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+# 1. Introduction
+Donald Trump is a person who has very unique style. Trump issues a lot of executive orders that are quite questionable especially in foreign policy. Among all foriegn policies, strarting wars and leaving some world organization are the most controversial decisions. In 2017, Trump announced that the United States will withdraw from the 2015 Paris climate accord; started airstrike on Baghdad International Airport in 2020;started U.S.-China Trade War in 2019; announced that the U.S. would cease funding of the World Health Organization (WHO) and pull out of the agency etc. Although many American citizens critique Trump administration’s policies, is that true that those strong foreign policies like invoving in a war or stop taking care these orgnizations above will decrease supporters?
+
+The *Time Series Cumulative Data* of ANES include answers, from respondents from different years, on selected questions that have been asked in three or more ANES' *Time Series* studies. Tremendous amount of efforts have been put into data consolidation as variables are often named differently in different years. 
+<img src="/Users/ccxiao/Documents/GitHub/Fall2020-Project1-XinyiWei/figs/CNN_WHO.png">
+
+<img src="/Users/ccxiao/Documents/GitHub/Fall2020-Project1-XinyiWei/figs/WHO_comment.png">
+
+<img src="/Users/ccxiao/Documents/GitHub/Fall2020-Project1-XinyiWei/figs/air.png">
+
+<img src="/Users/ccxiao/Documents/GitHub/Fall2020-Project1-XinyiWei/figs/comment.png">
+# 2. Access to ANES Data
+## Step 2.1: Register to access ANES dataset. 
+To access the data, you should register at ANES's [website](https://electionstudies.org/) and accept its terms of use, especially committing to "use these datasets solely for research or statistical purposes and not for investigation of specific survey respondents."
+
+## Step 2.2: Download the ANES Time Series Cumulative Data
+Once you are logged into ANES's website, you should be able to download the data file. You can use ASCII, DTA or SAV. In this notebook, we use the *SAV* format. The downloaded file is a zip file, you should move all unzipped files into the `data` folder of your project 1's local folder. 
+
+
+# 3. Data processing
+
+### Step 3.1 Checking `R` packages for data processing
+
+From the packages' descriptions:
+
+`tidyverse` is an opinionated collection of R packages designed for data science. All packages share an underlying design philosophy, grammar, and data structures;
+
+`haven` enables `R` to read and write various data formats used by other statistical packages. `haven` is part of the `tidyverse`.
+
+`dplyr` provides a flexible grammar of data manipulation. It's the next iteration of plyr, focused on tools for working with data frames (hence the d in the name).
+
+`data.table` inherits from data.frame. It offers fast and memory efficient: file reader and writer, aggregations, updates, equi, non-equi, rolling, range and interval joins, in a short and flexible syntax, for faster development.
+
+`ggrepel` This package contains extra geoms for ggplot2.
+
+`Readxl` Supports '.xls' via the embedded 'libxls' C library <https://github.com/libxls/libxls> and '.xlsx' via the embedded 'RapidXML' C++ library <http://rapidxml.sourceforge.net>. Works on Windows, Mac and Linux without external dependencies.
+
+`scales`Graphical scales map data to aesthetics, and provide methods for automatically determining breaks and labels for axes and legends.
+
+`ggpubr`ggpubr General Arguments Description
+
+`ggplot2` a collection of functions for creating graphics, based on The Grammar of Graphics.
+
+```{r load libraries, warning=FALSE, message=FALSE, include=FALSE}
+library(haven)
+library(dplyr)
+library(data.table)
+library(ggrepel)
+library(readxl)
+library("tidyverse")
+library("scales")
+library("ggpubr")
+library(ggplot2)
+```
+
+
+### Step 3.2 Import raw ANES data
+
+We will be working with the SAV format of the raw ANES data, downloaded from [this page](https://electionstudies.org/data-center/anes-time-series-cumulative-data-file/), once you are registered *and* logged in. This is a saved data file from SPSS. We will use the `read_sav` function from the `haven` package. 
+```{r}
+anes_dat <-read_sav("/Users/ccxiao/Downloads/anes_timeseries_cdf_sav/anes_timeseries_cdf.sav")
+nrow(anes_dat)
+ncol(anes_dat)
+```
+
+### Data Cleaning/Process variables for analysis
+### Basic Information about the data used
+```{r}
+#Which political party is in power?
+party <-read_excel("/Users/ccxiao/Downloads/Party.xlsx")
+party=party%>%mutate(VCF0004=as.numeric(party$VCF0004))
+newtable <- merge(anes_dat,party, by  = "VCF0004") 
+newtable$combine<-paste(newtable$VCF0004,newtable$Party)
+
+#Problem VCF0213 in the survey
+Military_thermometer<-newtable %>%filter(!is.na(VCF0213))%>%filter(!is.na(VCF0105a))
+#Military_thermometer
+barplot(table(Military_thermometer$VCF0004),las=2,main="number of cases in Problem VCF0213")
+
+#Problem VCF0823 in the survey
+unconcern_rest<-newtable%>%filter(!is.na(newtable$VCF0823))%>%group_by(combine,VCF0004) %>%
+count(VCF0823)%>%group_by(combine,VCF0004)%>%mutate(prop=n/sum(n))
+U=newtable%>%filter(!is.na(newtable$VCF0823))
+barplot(table(U$VCF0004),las=2,main="number of cases in Problem VCF0823")
+
+#Problem VCF9231 in the survey
+Limit<-newtable%>%filter(!is.na(newtable$VCF9231))%>%group_by(VCF0004,combine)%>%count(VCF9231)
+L=newtable%>%filter(!is.na(newtable$VCF9231))
+barplot(table(L$VCF0004),las=2,main="number of cases in Problem VCF9231")
+
+anes_use=newtable%>%
+  mutate(
+    year=as_factor(VCF0004),
+    race=as_factor(VCF0105a),
+    party=as_factor(Party),
+    combine=as_factor(combine),
+    limit=as_factor(VCF9231)
+  )
+
+#Problem VCF0826 in the survey
+Invovle=newtable%>%
+  mutate(
+    year=as_factor(VCF0004),
+    race=as_factor(VCF0105a),
+    combine=as_factor(combine),
+    party=as_factor(Party),
+    limit=as_factor(VCF0826)
+  )
+barplot(table(Invovle$VCF0004),las=2,main="number of cases in Problem VCF0826")
+
+
+#Problem VCF0892 in the survey
+Foreign_Aid<-newtable%>%filter(!is.na(newtable$VCF0892))%>%group_by(combine,VCF0004,Party) %>%
+count(VCF0892)%>%group_by(combine,VCF0004)%>%mutate(prop=n/sum(n))
+FF=newtable%>%filter(!is.na(newtable$VCF0892))
+Foreign_Aid=Foreign_Aid%>%mutate(opinion=as_factor(VCF0892))
+barplot(table(FF$VCF0004),las=2,main="number of cases in Problem VCF0892")
+```
+
+# Does increase conflicts/wars with other countries will affect voting?
+Firstly. we could take a look at how much people care about the "Military". Based on the ANES survey, feeling thermometer data  (score from 0-100) shows that the avergae score for military is 72 which means people care so much about war/military. Among all races, data shows Hispanic people worry most, and Asian or Pacific Islander, non-Hispanic people beware less. 
+```{r}
+#Military -- feeling thermometer
+New<-newtable %>%filter(!is.na(VCF0213))%>%filter(!is.na(VCF0105a))
+H<-Military_thermometer%>%group_by(VCF0105a) %>%
+summarize(Average_theorm = mean(VCF0213))
+K=New%>%group_by(as_factor(VCF0004)) %>%
+summarize(Average_theorm = mean(VCF0213))
+print(paste("Avergae OverAll Military -- feeling thermometer is: ",mean(K$Average_theorm)))
+Military_thermometer%>%group_by(as_factor(VCF0105a)) %>%
+summarize(Average_theorm = mean(VCF0213))
+ggplot(H, aes(x=as_factor(VCF0105a), y=Average_theorm,color=as_factor(VCF0105a))) +geom_bar(stat='identity',fill="white")+xlab("Year")+labs(color="Race")+theme(axis.text.x=element_blank())
+```
+
+Originally, we always think that americans must not like using US troops to fight. However, is that true? Based on ANES survey, although there are 20% more people think we should stay out wars instead of remaining, the proportion of suporters increase recently. In 2019, In that survey, which was released by the Chicago Council on Global Affairs, 70 percent of respondents, including 82 percent of Republicans and 66 percent of Democrats, supported using U.S. troops to stop Iran from obtaining nuclear weapons. 
+Thus, wars may not change a lot minds of voters.
+(https://fivethirtyeight.com/features/few-americans-want-u-s-forces-to-defend-saudi-arabia/)
+```{r}
+#Did U.S. Do Right Thing Getting Involved in War
+
+H=Invovle%>%filter(!is.na(limit))%>%filter(!is.na(race))%>%group_by(combine,VCF0004,limit,race) %>%
+count(limit)%>%group_by(combine,VCF0004,race)%>%mutate(
+    prop=n/sum(n)
+  )
+q<-Invovle%>%filter(!is.na(limit))%>%filter(!is.na(race))%>%filter(race=="1. White non-Hispanic (1948-2012)")%>%group_by(combine,VCF0004,limit)%>%
+count(limit)%>%group_by(combine,VCF0004)%>%mutate(prop=n/sum(n))%>%group_by(limit)%>%summarize(mean=mean(prop))
+
+ggplot(H, 
+       aes(x=limit,y=prop))+geom_boxplot()
+
+
+F<-newtable%>%filter(!is.na(newtable$VCF0826))%>%group_by(VCF0004,VCF0826) %>%
+count(VCF0826)%>%group_by(VCF0004)%>%mutate(prop=n/sum(n))
+
+ggplot(data=F%>%filter(VCF0826==2), aes(x=as_factor(VCF0004), y=prop, group=as.factor(VCF0826))) +
+  geom_line(aes(colour=as.factor(VCF0826)))+
+  geom_point(aes(colour=as.factor(VCF0826)))+labs(colour="yes,did right things")+xlab("year")+theme(axis.text.x = element_text(angle = 45))
+```
+
+# Does quiting World Health Organization: WHO/United Nations Human Rights Council will affect voting?
+Based on the ANES, we could know that most people (avergae of 70%) think we should concern about the world all the time. In the defense one website, one article says that "When they asked Americans whether they support the U.S. taking “an active part in world affairs”, 69 percent said yes; 30 percent, no." Therefore, most people want US to partipate in global development. However, "The current U.N. regular budget calls for $5.4 billion over two years. By a formula based on the size of a country’s economy and other factors, America’s assessment is set at 22 percent, or about $1.2 billion." "For the two-year budget cycle of 2018 and 2019, the U.S. government pledged to contribute $893 million to WHO’s budget – consisting of “assessed contributions” (dues paid by member countries) and voluntary contributions." Is that true people want to USA to involve if they need to pay a lot foreign aid money? 
+
+https://www.npr.org/sections/goatsandsoda/2020/04/15/834666123/trump-and-who-how-much-does-the-u-s-give-whats-the-impact-of-a-halt-in-funding
+(https://fivethirtyeight.com/features/few-americans-want-u-s-forces-to-defend-saudi-arabia/) 
+https://www.politifact.com/factchecks/2017/feb/01/rob-portman/us-contribution-un-22-percent/
+```{r}
+#Better off if U.S. Unconcerned with Rest of World
+#year=as_factor(VCF0004)
+F<-unconcern_rest%>%mutate(opinion=as_factor(VCF0823))
+F%>%group_by(opinion)%>%summarize(mean=mean(prop))
+ggplot(data=F, aes(x=as_factor(VCF0004), y=prop, group=opinion)) +
+  geom_line(aes(linetype=opinion,colour=opinion))+
+  geom_point(aes(colour=opinion))+xlab("Year")+theme(axis.text.x = element_text(angle = 45))
+```
+
+Acordding to the ANES, we could know that about avergae of 50% people think we should decreased or cut out entirely Foreign Aid. 2017 Chicago Council Survey report says that Americans Support Foreign Aid, but Oppose Paying for It. People want to help other countries but they do not want to pay for it. Therefore, if Trump uses excuses that USA leaves WHO/United Nations Human Rights Council could reduce spending, it will mot affect how people vote.
+```{r}
+#Federal Spending- Foreign Aid
+Foreign_Aid%>%group_by(opinion)%>%summarize(mean=mean(prop))
+
+
+ggplot(data=Foreign_Aid, aes(x=as_factor(VCF0004), y=prop, fill=opinion)) +geom_bar(stat='identity',position="stack")+xlab("Year")
+
+
+Foreign_Aid_race=newtable%>%
+  mutate(
+    year=as_factor(VCF0004),
+    race=as_factor(VCF0105a),
+    combine=as_factor(combine),
+    party=as_factor(Party),
+    limit=as_factor(VCF0892)
+  )
+
+
+H=Foreign_Aid_race%>%filter(!is.na(limit))%>%filter(!is.na(race))%>%group_by(VCF0004,limit,race) %>%
+count(limit)%>%group_by(VCF0004,race)%>%mutate(
+    prop=n/sum(n)
+  )
+
+
+ggplot(H, 
+       aes(x=as_factor(VCF0004), y=prop, group=limit)) +
+  geom_line(aes(linetype=race,colour=limit))+
+  geom_point(aes(colour=limit))+facet_wrap(~race, ncol=2) + 
+  theme(axis.text.x = element_text(angle = 30))
+```
+
+# Conclusion
+In conclusion, although President Donald Trump did a lot of unusal or unacceptable for some poeple, like joining in wars or quiting some world orgnizations, these foreign policy orders will not affect how people vote. Firstly, based on the ANES survey, data shows that people care about militaries, and they do want to use U.S. troops to defend direct threats to U.S. interests and allies. In the meanwhile, data shows that people do not want to helping other countries by paying a lot, and they prefer decreasing or cutting out entirely Foreign Aid spending. 
